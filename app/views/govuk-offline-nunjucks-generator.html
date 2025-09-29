@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en" data-theme="govuk-offline">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Offline GOV.UK Page Generator (Nunjucks templates)</title>
+  <style>
+    @font-face { font-family: 'GDS Transport'; src: local('GDS Transport'), local('Transport'); font-display: swap; }
+    :root {
+      --govuk-black:#0b0c0c; --govuk-white:#fff; --govuk-text:#0b0c0c; --govuk-link:#1d70b8; --govuk-link-hover:#003078; --govuk-border:#b1b4b6; --govuk-highlight:#f3f2f1; --govuk-button:#1d70b8; --govuk-button-hover:#003078; --govuk-muted:#505a5f;
+      --s-2:8px; --s-3:12px; --s-4:16px; --s-5:20px; --s-6:24px; --s-7:32px; --s-8:40px; --s-9:48px;
+    }
+    body{margin:0;background:var(--govuk-white);color:var(--govuk-text);font-family:'GDS Transport',Arial,Helvetica,sans-serif;line-height:1.5}
+    .govuk-width-container{max-width:960px;margin:0 auto;padding:0 var(--s-6)}
+    .govuk-header{background:var(--govuk-black);color:#fff;padding:var(--s-6) 0}
+    .govuk-header__logotype{font-weight:700;font-size:24px}
+    .tag{display:inline-block;background:#ffbf47;color:#000;font-weight:700;padding:2px 6px}
+    .govuk-heading-m{font-size:24px;margin:var(--s-6) 0 var(--s-4)}
+    .govuk-body{font-size:19px}
+    .app-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s-7);padding:var(--s-7) 0 var(--s-9)}
+    .card{border:1px solid var(--govuk-border);border-radius:6px;padding:var(--s-6);background:#fff}
+    label{font-weight:700;margin-bottom:var(--s-2);display:block}
+    textarea,input[type=text]{width:100%;padding:var(--s-4);border:2px solid var(--govuk-border);font-size:16px}
+    textarea{min-height:140px}
+    .row{display:flex;gap:var(--s-4);flex-wrap:wrap;align-items:center}
+    .hint{color:var(--govuk-muted)}
+    .govuk-button{display:inline-block;background:var(--govuk-button);color:#fff;border:none;padding:10px 16px;font-size:19px;cursor:pointer;text-decoration:none}
+    .govuk-button:hover{background:var(--govuk-button-hover)}
+    .code{background:#0b0c0c;color:#f8f8f2;padding:var(--s-6);overflow:auto;max-height:60vh;white-space:pre;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+    iframe{width:100%;height:45vh;border:1px solid var(--govuk-border)}
+    .phase{border-bottom:1px solid var(--govuk-border);padding:var(--s-4) 0;background:var(--govuk-highlight)}
+    .footer{margin:var(--s-8) 0;color:var(--govuk-muted);font-size:16px}
+  </style>
+</head>
+<body>
+  <header class="govuk-header">
+    <div class="govuk-width-container">
+      <div class="govuk-header__logotype">GOV.UK offline generator <span class="tag">BETA</span></div>
+    </div>
+  </header>
+
+  <div class="govuk-width-container">
+    <div class="phase govuk-body">Generates <strong>Nunjucks</strong> templates for the GOV.UK Prototype Kit. Works offline. Preview approximates macros client-side.</div>
+
+    <div class="app-grid">
+      <section class="card" aria-label="Generator controls">
+        <h2 class="govuk-heading-m">Describe the page</h2>
+        <p class="hint">Examples: Start page, Question page, Check your answers, Confirmation page, Mainstream guidance, Step by step.</p>
+        <label for="service">Service name (optional)</label>
+        <input id="service" type="text" placeholder="e.g. Get help for caring responsibilities">
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" placeholder="Describe your page…"></textarea>
+        <div class="row" style="margin-top:12px">
+          <button class="govuk-button" id="generate">Generate</button>
+          <button class="govuk-button" id="copyCode" type="button">Copy code</button>
+          <span id="copyStatus" class="hint" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section class="card" aria-label="Outputs">
+        <h2 class="govuk-heading-m">Live preview (approximate)</h2>
+        <iframe id="preview" title="Live preview"></iframe>
+        <h2 class="govuk-heading-m" style="margin-top:24px">Generated Nunjucks code</h2>
+        <pre class="code" id="codeOutput" aria-label="Generated code" tabindex="0"></pre>
+      </section>
+    </div>
+
+    <p class="footer">Copy the generated Nunjucks into your Prototype Kit <code>.njk</code>. Preview stubs out macros like <code>govukHeader</code>, <code>govukSummaryList</code>, <code>govukPanel</code>.</p>
+  </div>
+  {% raw %}
+<script>
+  // ----------------------------
+  // Fetchers
+  // ----------------------------
+  async function loadTemplate(name, serviceName) {
+    const res = await fetch(`/templates/${name}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Failed to load template: ${name}`);
+    const raw = await res.text();
+    return injectServiceName(raw, serviceName);
+  }
+
+  async function loadComponentMacro(name, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    const url = qs ? `/components-macro/${name}?${qs}` : `/components-macro/${name}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Failed to load component: ${name}`);
+    return res.text(); // returns Nunjucks like {{ govukRadios({ ... }) }}
+  }
+
+  // ----------------------------
+  // Template choice
+  // ----------------------------
+  function decideTemplateName(prompt) {
+    const t = (prompt || '').toLowerCase();
+    if (/confirmation|complete/.test(t)) return 'confirmation';
+    if (/check your answers|cya/.test(t)) return 'cya';
+    if (/guidance|guide|mainstream/.test(t)) return 'guidance';
+    if (/step[\s-]?by[\s-]?step/.test(t)) return 'step-by-step';
+    if (/blank/.test(t)) return 'blank';
+    if (/\bquestion|form|ask|capture\b/.test(t)) return 'question';
+    return 'start';
+  }
+
+  // ----------------------------
+  // Component detection with ordering
+  // ----------------------------
+  function parseOrderedComponents(prompt) {
+    const text = prompt || '';
+
+    const mentions = [];
+    pushMention(mentions, text, 'radios', /\bradio|single choice|multiple choice|yes\/?no|yes and no|yes or no/ig);
+    pushMention(mentions, text, 'checkboxes', /\bcheckbox|tick|select all that apply|multiple selection/ig);
+    pushMention(mentions, text, 'input-text', /\btext input|input field|free text|full name|email address|postcode/ig);
+    pushMention(mentions, text, 'date-input', /\bdate of birth|dob|date input|when were you born/ig);
+    pushMention(mentions, text, 'error-summary', /\berror summary|validation|show errors|there is a problem\b/ig);
+    pushMention(mentions, text, 'notification-banner', /\bnotification banner|banner|warning message|important\b/ig);
+    pushMention(mentions, text, 'panel', /\bpanel|application complete|reference number\b/ig);
+    pushMention(mentions, text, 'summary-list', /\bsummary list|check your answers|cya\b/ig);
+    pushMention(mentions, text, 'button-basic', /\bbutton|continue|start now|submit\b/ig);
+
+    mentions.sort((a,b)=> a.index - b.index);
+
+    const choiceList = extractChoiceList(prompt); // radios items from "options: a, b, c"
+
+    const inferred = mentions.map(m => {
+      if (m.name === 'radios') {
+        const yesNo = /\byes\/?no|yes and no|yes or no\b/i.test(text);
+        const legend = extractLegend(prompt) || guessLegend(prompt) || 'Choose one option';
+        const params = { legend };
+        if (choiceList && choiceList.type === 'radios') {
+          params.items = JSON.stringify(choiceList.items);
+        } else if (yesNo) {
+          params.yn = 'true'; // tell the /components-macro route to use Yes/No
+        }
+        return { name: 'radios', params };
+      }
+      if (m.name === 'checkboxes') {
+        const legend = extractLegend(prompt) || 'Select all that apply';
+        return { name: 'checkboxes', params: { legend } };
+      }
+      if (m.name === 'input-text') {
+        const label = extractLabel(prompt) || guessLabel(prompt) || 'Full name';
+        const id = toId(label);
+        const autocomplete = guessAutocomplete(label);
+        return { name: 'input-text', params: { id, name: id, label, autocomplete } };
+      }
+      if (m.name === 'date-input') {
+        return { name: 'date-input', params: { legend: 'What is your date of birth?', id: 'date-of-birth', namePrefix: 'dob' } };
+      }
+      if (m.name === 'button-basic') {
+        const isStart = /\bstart now\b/i.test(text);
+        const label = extractButtonText(prompt) || (isStart ? 'Start now' : 'Continue');
+        return { name: 'button-basic', params: { text: label, ...(isStart ? { isStartButton: 'true' } : {}) } };
+      }
+      return { name: m.name, params: {} };
+    });
+
+    const ordered = applyRelativeRules(text, inferred);
+
+    // dedupe by name, keep first occurrence (order matters)
+    const seen = new Set();
+    const finalOrder = [];
+    for (const c of ordered) {
+      if (!seen.has(c.name)) { seen.add(c.name); finalOrder.push(c); }
+    }
+    return finalOrder;
+  }
+
+  function pushMention(list, text, name, regex) {
+    let m; while ((m = regex.exec(text))){ list.push({ name, index: m.index }); }
+  }
+
+  function applyRelativeRules(text, comps) {
+    const out = [...comps];
+    function moveRelative(cName, refName, place) {
+      const i = out.findIndex(c => c.name === cName);
+      const j = out.findIndex(c => c.name === refName);
+      if (i === -1 || j === -1) return;
+      const [c] = out.splice(i,1);
+      out.splice(place === 'after' ? j + 1 : j, 0, c);
+    }
+    // “button below/after radios”
+    if (/button.*(below|after).*(radio|radios)/i.test(text) || /(below|after).*(radio|radios).*button/i.test(text)) {
+      moveRelative('button-basic','radios','after');
+    }
+    // “button above/before radios”
+    if (/button.*(above|before).*(radio|radios)/i.test(text) || /(above|before).*(radio|radios).*button/i.test(text)) {
+      moveRelative('button-basic','radios','before');
+    }
+    // “button at the top/bottom”
+    if (/button.*at the top/i.test(text)) {
+      const i = out.findIndex(c => c.name === 'button-basic');
+      if (i > 0) { const [c] = out.splice(i,1); out.unshift(c); }
+    }
+    if (/button.*at the bottom/i.test(text)) {
+      const i = out.findIndex(c => c.name === 'button-basic');
+      if (i !== -1 && i !== out.length - 1) { const [c] = out.splice(i,1); out.push(c); }
+    }
+    return out;
+  }
+
+  // ----------------------------
+  // Negation: “no/without/remove X”
+  // ----------------------------
+  function removeNegatedComponents(components, prompt) {
+    const text = (prompt || '').toLowerCase();
+    const aliases = {
+      'button-basic': ['button','continue button','start button','submit'],
+      'radios': ['radio','radios','radio buttons'],
+      'checkboxes': ['checkbox','checkboxes'],
+      'input-text': ['text input','input','text field'],
+      'date-input': ['date input','dob','date of birth'],
+      'error-summary': ['error summary','errors','validation'],
+      'notification-banner': ['notification banner','banner'],
+      'panel': ['panel','confirmation panel'],
+      'summary-list': ['summary list','check your answers','cya'],
+      'breadcrumbs': ['breadcrumbs','breadcrumb']
+    };
+    function isNegated(name) {
+      const terms = aliases[name] || [name];
+      return terms.some(term =>
+        text.includes(`no ${term}`) ||
+        text.includes(`without ${term}`) ||
+        text.includes(`remove ${term}`)
+      );
+    }
+    return components.filter(c => !isNegated(c.name));
+  }
+
+  // Remove negated built-ins that might exist in the base template
+  function stripNegatedBuiltIns(njk, prompt) {
+    const text = (prompt || '').toLowerCase();
+
+    function wantsRemoval(term) {
+      return text.includes(`no ${term}`) || text.includes(`without ${term}`) || text.includes(`remove ${term}`);
+    }
+
+    // Breadcrumbs
+    if (wantsRemoval('breadcrumbs') || wantsRemoval('breadcrumb')) {
+      njk = njk.replace(/\{\{\s*govukBreadcrumbs\([\s\S]*?\)\s*\}\}\s*/g, '');
+    }
+
+    // Buttons that might exist in some base templates (defensive)
+    if (wantsRemoval('button') || wantsRemoval('continue button') || wantsRemoval('start button')) {
+      njk = njk.replace(/\{\{\s*govukButton\([\s\S]*?\)\s*\}\}\s*/g, '');
+    }
+
+    // Panel
+    if (wantsRemoval('panel')) {
+      njk = njk.replace(/\{\{\s*govukPanel\([\s\S]*?\)\s*\}\}\s*/g, '');
+    }
+
+    // Summary list
+    if (wantsRemoval('summary list') || wantsRemoval('check your answers') || wantsRemoval('cya')) {
+      njk = njk.replace(/\{\{\s*govukSummaryList\([\s\S]*?\)\s*\}\}\s*/g, '');
+    }
+
+    return njk;
+  }
+
+  // ----------------------------
+  // Tiny NLP helpers
+  // ----------------------------
+  function extractLegend(prompt) {
+    const m = /legend\s*[:\-]\s*([^\.\n]{3,120})/i.exec(prompt);
+    return m ? clean(m[1]) : null;
+  }
+  function extractLabel(prompt) {
+    const m = /label\s*[:\-]\s*([^\.\n]{3,120})/i.exec(prompt);
+    return m ? clean(m[1]) : null;
+  }
+  function extractButtonText(prompt) {
+    const m = /button\s*text\s*[:\-]\s*([^\.\n]{1,80})/i.exec(prompt);
+    return m ? clean(m[1]) : null;
+  }
+  function extractChoiceList(prompt) {
+    // supports: options: yes, no, maybe   OR   choices "Yes", "No", "Maybe"
+    const m = /(?:options|choices)\s*[:\-]\s*([^\n]+)/i.exec(prompt);
+    if (!m) return null;
+    const items = m[1]
+      .split(/[,\|]/)
+      .map(s => clean(s))
+      .filter(Boolean)
+      .map((t,i) => ({ value: toId(t) || `option-${i+1}`, text: capitalise(t) }));
+    return items.length ? { type: 'radios', items } : null;
+  }
+  function guessLegend(prompt) {
+    const m = /([A-Z].+\?)\s*$/m.exec(prompt) || /([A-Z].+?)\s*(?:\n|$)/m.exec(prompt);
+    return m ? clean(m[1]) : null;
+  }
+  function guessLabel(prompt) {
+    if (/full name/i.test(prompt)) return 'Full name';
+    if (/email/i.test(prompt)) return 'Email address';
+    if (/postcode/i.test(prompt)) return 'Postcode';
+    return null;
+  }
+  function guessAutocomplete(label) {
+    const l = label.toLowerCase();
+    if (l.includes('name')) return 'name';
+    if (l.includes('email')) return 'email';
+    if (l.includes('postcode')) return 'postal-code';
+    return '';
+  }
+  function toId(s){ return String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+  function clean(s){ return String(s).trim().replace(/\s+/g,' ').replace(/[“”]/g,'"').replace(/[’]/g,"'"); }
+  function capitalise(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+  // ----------------------------
+  // Assemble page
+  // ----------------------------
+  function injectServiceName(njk, serviceName){
+    const s = serviceName && serviceName.trim() ? serviceName.trim() : 'Your service';
+    return njk.replace(/\{\{\s*serviceName\s*\}\}/g, s);
+  }
+
+  function insertComponentsIntoContent(njk, componentsMarkup) {
+    if (!componentsMarkup.trim()) return njk;
+
+    // Prefer explicit marker
+    const marker = '<!-- COMPONENTS_HERE -->';
+    if (njk.includes(marker)) return njk.replace(marker, '\n' + componentsMarkup + '\n');
+
+    // Otherwise insert before end of the main content block
+    const open = njk.indexOf('{% block content %}');
+    if (open === -1) return njk + '\n\n' + componentsMarkup + '\n';
+    const rest = njk.slice(open);
+    const endRel = rest.indexOf('{% endblock %}');
+    if (endRel === -1) return njk + '\n\n' + componentsMarkup + '\n';
+    const absEnd = open + endRel;
+    return njk.slice(0, absEnd) + '\n\n' + componentsMarkup + '\n\n' + njk.slice(absEnd);
+  }
+
+  async function buildPageCode() {
+    const svc = document.getElementById('service').value || '';
+    const prompt = document.getElementById('prompt').value || '';
+    const templateName = decideTemplateName(prompt);
+
+    // 1) Base template
+    let njk = await loadTemplate(templateName, svc);
+
+    // 2) Strip any built-ins the prompt negates (defensive for templates that still include things)
+    njk = stripNegatedBuiltIns(njk, prompt);
+
+    // 3) Detect and order components from the prompt
+    let components = parseOrderedComponents(prompt);
+
+    // 4) Remove any components explicitly negated by the prompt
+    components = removeNegatedComponents(components, prompt);
+
+    // 5) Fetch macro fragments and insert them in order
+    if (components.length) {
+      const fragments = await Promise.all(components.map(c => loadComponentMacro(c.name, c.params || {})));
+      njk = insertComponentsIntoContent(njk, fragments.join('\n\n'));
+    }
+
+    return njk;
+  }
+
+  // ----------------------------
+  // Preview (approximate)
+  // ----------------------------
+  function renderPreview(njk){
+    return njk
+      .replace(/{%[\s\S]*?%}/g, '')
+      .replace(/\{\{\s*govukHeader\([\s\S]*?\)\s*\}\}|\{\{\s*govukHeader\(\)\s*\}\}/g, '<header style="background:#0b0c0c;color:#fff;padding:12px 0"><div style="max-width:960px;margin:0 auto;padding:0 24px"><strong>GOV.UK</strong></div></header>')
+      .replace(/\{\{\s*govukBreadcrumbs\([\s\S]*?\)\s*\}\}/g, '') // might be stripped
+      .replace(/\{\{\s*govukBackLink\([\s\S]*?\)\s*\}\}/g, '<p><a href="#">Back</a></p>')
+      .replace(/\{\{\s*govukButton\([\s\S]*?\)\s*\}\}/g, '<a class="govuk-button" href="#" style="display:inline-block;background:#1d70b8;color:#fff;padding:10px 16px;text-decoration:none">Button</a>')
+      .replace(/\{\{\s*govukInput\([\s\S]*?\)\s*\}\}/g, '<div style="margin:8px 0"><label><strong>Text input</strong></label><input style="display:block;width:100%;padding:8px;border:2px solid #b1b4b6"></div>')
+      .replace(/\{\{\s*govukRadios\([\s\S]*?\)\s*\}\}/g, '<fieldset style="margin:8px 0"><legend><strong>Radios</strong></legend><div><label><input type="radio" name="r"> Option A</label></div><div><label><input type="radio" name="r"> Option B</label></div></fieldset>')
+      .replace(/\{\{\s*govukCheckboxes\([\s\S]*?\)\s*\}\}/g, '<fieldset style="margin:8px 0"><legend><strong>Checkboxes</strong></legend><div><label><input type="checkbox"> Option 1</label></div><div><label><input type="checkbox"> Option 2</label></div></fieldset>')
+      .replace(/\{\{\s*govukDateInput\([\s\S]*?\)\s*\}\}/g, '<div style="margin:8px 0"><strong>Date input</strong></div>')
+      .replace(/\{\{\s*govukPanel\([\s\S]*?\)\s*\}\}/g, '<div style="background:#00703c;color:#fff;padding:24px;margin:24px 0"><h1 style="margin:0 0 8px">Application complete</h1><p style="margin:0">Reference: <strong>HDJ2123F</strong></p></div>')
+      .replace(/\{\{\s*govukSummaryList\([\s\S]*?\)\s*\}\}/g, '<dl style="border-top:1px solid #b1b4b6"><div style="display:flex;justify-content:space-between;border-bottom:1px solid #b1b4b6;padding:8px 0"><dt><strong>Question 1</strong></dt><dd>Answer 1</dd><dd><a href="#">Change</a></dd></div></dl>');
+  }
+
+  // ----------------------------
+  // Wire up UI
+  // ----------------------------
+  const preview = document.getElementById('preview');
+  const codeOutput = document.getElementById('codeOutput');
+
+  document.getElementById('generate').addEventListener('click', async () => {
+    try {
+      const code = await buildPageCode();
+      codeOutput.textContent = code;
+
+      const doc = preview.contentDocument || preview.contentWindow.document;
+      const shell = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Preview</title>
+        <style>
+          body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#0b0c0c;line-height:1.5}
+          .govuk-button{display:inline-block;background:#1d70b8;color:#fff;border:none;padding:10px 16px;font-size:19px;text-decoration:none}
+          .govuk-button:hover{background:#003078}
+          .govuk-width-container{max-width:960px;margin:0 auto;padding:0 24px}
+        </style></head><body>${renderPreview(code)}</body></html>`;
+      doc.open(); doc.write(shell); doc.close();
+    } catch (err) {
+      codeOutput.textContent = `// Error: ${err.message}`;
+    }
+  });
+
+</script>
+{% endraw %}
+
+  
+</body>
+</html>
