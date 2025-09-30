@@ -8,16 +8,28 @@
   <div class="govuk-grid-column-two-thirds">
 
    
-    <h1 class="govuk-heading-xl">
-      {{ serviceName }}
+    <h1 class="govuk-heading-l">
+      Create prototype code for the GOVUK prototype kit
     </h1>
+<p class="govuk-body">  This is a tool to create Nunjucks code to be used in the GOVUK Prototype Kit. You can use the prompt to request various page templates and all the components from the GOVUK Design System.
+</p>
 
-      {{ govukButton({
-          text: "Continue",
-          href: "example/where-do-you-live"
+<p class="govuk-body">It will create a preview of what the code will do, the Nunjucks code to paste into your code editor and a copy code button to copy the code to your clipboard. </p>
+<p>This tool is not powered by Ai. Cloning the GitHub repository will allow you to run the kit the same as any other GOVUK Prototype Kit and does not require an internet connection to run </p>
+
+{{ govukButton({
+          text: "Get started",
+          href: "govuk-offline-nunjucks-generator"
         }) }}
-    {% include "govuk-prototype-kit/includes/homepage-bottom.njk" %}
-  </div>
+ 
+
+  <h2 class="govuk-heading-m">Planned future iterations</h2>
+<ul class="govuk-list--bullet">
+  <li><a href="https://design-system.service.gov.uk/patterns/">GOVUK Design System Patterns</a></li>
+  <li><a href="https://design-system.dwp.gov.uk/components/">DWP Design System components</a></li>
+</ul>
+
+</div>
 </div>
 
 {% endblock %}
