@@ -4,3 +4,11 @@
 // 
 
 // Add extra styles here
+/* Make service navigation match govukHeader width */
+.govuk-service-navigation--full-width .govuk-width-container {
+    max-width: none;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 20px; /* match header padding */
+  }
+  

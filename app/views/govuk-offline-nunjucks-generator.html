@@ -38,7 +38,14 @@
   gap:1px;
 }
 .heading-row .govuk-button{ margin:0; } /* remove extra top/bottom space in the header */
-
+/* Make service navigation match govukHeader width */
+.govuk-service-navigation--full-width .govuk-width-container {
+    max-width: none;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 20px; /* match header padding */
+  }
+  
   </style>
 </head>
 <body>
@@ -137,7 +144,7 @@
       pushMention(mentions, text, 'error-summary', /\berror summary|validation|show errors|there is a problem\b/ig);
       pushMention(mentions, text, 'notification-banner', /\bnotification banner|warning message|important\b/ig);
       pushMention(mentions, text, 'panel', /\bpanel|application complete|reference number\b/ig);
-      pushMention(mentions, text, 'summary-list', /\bsummary list|check your answers|cya\b/ig);
+      pushMention(mentions, text, 'summary-list', /\bsummary list\b/ig);
       pushMention(mentions, text, 'button-basic', /\bbutton|continue|start now|submit\b/ig);
   
       // previously added components
@@ -736,6 +743,23 @@ function prependMacroImports(njk, componentNames) {
 
   // 4) Remove any components explicitly negated by the prompt
   components = removeNegatedComponents(components, prompt);
+  // Ensure service-navigation is always included
+if (!components.some(c => c.name === 'service-navigation')) {
+  components.unshift({ name: 'service-navigation', params: { serviceName: 'Your service name' } });
+}
+
+// Ensure service navigation is present by default unless explicitly negated
+if (!components.some(c => c.name === 'service-navigation')) {
+  components.unshift({
+    name: 'service-navigation',
+    params: {
+      serviceName: 'Service name',
+      serviceUrl: '#'
+      // no navigation passed here, the server builder will supply the default 3 items
+      // classes will also be set by the server builder to full-width
+    }
+  });
+}
 
   // Helper: split fixed-position vs the rest, and enforce fixed order
   function partitionFixedComponents(list) {
@@ -774,6 +798,7 @@ function prependMacroImports(njk, componentNames) {
 }
 
     }
+    
 
     // Then, the rest, in detected order
     if (rest.length) {

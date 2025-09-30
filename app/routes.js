@@ -338,16 +338,23 @@ router.get('/components-macro/:name', (req, res) => {
   return `{{ govukTable(${stringify(opts)}) }}`;
 },
 
-// SERVICE NAVIGATION
 'service-navigation': q => {
   const nav = q.navigation ? safeParseArray(q.navigation) : [
     { href: '#', text: 'Navigation item 1' },
     { href: '#', text: 'Navigation item 2', active: true },
     { href: '#', text: 'Navigation item 3' }
   ];
-  const opts = { navigation: nav };
+
+  const opts = {
+    serviceName: q.serviceName || 'Service name',
+    serviceUrl: q.serviceUrl || '#',
+    navigation: nav,
+    classes: 'govuk-service-navigation--full-width' // required for the CSS to target
+  };
+
   return `{{ govukServiceNavigation(${stringify(opts)}) }}`;
 },
+
 
 // PASSWORD INPUT
 'password-input': q => {
@@ -474,12 +481,14 @@ router.get('/components-macro/:name', (req, res) => {
 // ---------------------------------------
 // Exact preview: render NJK to real HTML
 // ---------------------------------------
-
+// ---------------------------------------
+// Exact preview: render NJK to real HTML
+// ---------------------------------------
 router.post('/preview-render', textParser, (req, res) => {
   try {
     const njk = String(req.body || '');
 
-    // Reuse the kit's Nunjucks env if available
+    // Reuse the kit's Nunjucks env if available, or configure a local one
     const env =
       req.app.locals?.nunjucksEnv ||
       req.app.get('nunjucksEnv') ||
@@ -491,31 +500,59 @@ router.post('/preview-render', textParser, (req, res) => {
         { express: req.app, autoescape: true }
       );
 
+    // Add govukRebrand global (idempotent)
+    if (typeof env.getGlobal === 'function') {
+      // Only add if not already present or not already true
+      const existing = (() => { try { return env.getGlobal('govukRebrand'); } catch { return undefined; } })();
+      if (existing !== true) env.addGlobal('govukRebrand', true);
+    } else {
+      // Fallback if getGlobal is not available in this env
+      env.addGlobal('govukRebrand', true);
+    }
+
     let html = env.renderString(njk, {
-      serviceName: 'Your service'
+      serviceName: 'Your service' // harmless default if templates reference it
     });
 
-    // Inject a <base> so relative asset URLs resolve inside <iframe srcdoc>
+    // Ensure relative asset URLs resolve in <iframe srcdoc>
     const baseHref = `${req.protocol}://${req.get('host')}/`;
     const baseTag = `<base href="${baseHref}">`;
-
-    // Only add if not present already
     if (!/<!\s*base\b/i.test(html)) {
       if (/<head[^>]*>/i.test(html)) {
         html = html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
       } else {
-        // No <head> in the rendered fragment, prepend one
         html = `<!doctype html><html><head>${baseTag}</head><body>${html}</body></html>`;
       }
     }
 
+    // Optional: keep preview at two-thirds width if you want
+    // Comment this block out if you don't want to force the width.
+    const override = `
+    <style>
+      /* Keep main content at two-thirds width */
+      main .govuk-width-container {
+        max-width: none !important;
+        width: 66.666% !important;
+        margin: 0 auto !important;
+        padding: 0 20px !important; /* match header side padding */
+      }
+    
+      /* Make service navigation match the header width */
+      .govuk-service-navigation.govuk-service-navigation--full-width > .govuk-width-container {
+        max-width: none !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+        padding: 0 20px !important;
+      }
+    </style>`;
+    
+
     res.type('html').send(html);
   } catch (err) {
-    res.status(400).type('text/plain').send(
-      `Preview render error: ${err.message}`
-    );
+    res.status(400).type('text/plain').send(`Preview render error: ${err.message}`);
   }
 });
+
 
 
 module.exports = router;

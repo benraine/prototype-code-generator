@@ -6,7 +6,10 @@
 
 {% block header %}
   <!-- Blank header with no service name for this page -->
-  {{ govukHeader() }}
+{{ govukHeader({
+  classes: "govuk-header--full-width-border"
+}) }}
+
 {% endblock %}
 
 {% block beforeContent %}

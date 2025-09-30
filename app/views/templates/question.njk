@@ -1,9 +1,15 @@
 {% extends "layouts/main.html" %}
 
 {% block pageTitle %}
-  Question page template – {{ serviceName }} – GOV.UK Prototype Kit
+  Question page template – GOV.UK Prototype Kit
 {% endblock %}
+{% block header %}
+  <!-- Blank header with no service name -->
+{{ govukHeader({
+  classes: "govuk-header--full-width-border"
+}) }}
 
+{% endblock %}
 {% block beforeContent %}
   {{ govukBackLink({ text: "Back", href: "javascript:window.history.back()" }) }}
 {% endblock %}

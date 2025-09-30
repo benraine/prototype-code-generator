@@ -1,8 +1,14 @@
 {% extends "layouts/main.html" %}
 
 {% block pageTitle %}
-  GOV.UK page template – {{ serviceName }} – GOV.UK Prototype Kit
+  GOV.UK page template – GOV.UK Prototype Kit
 {% endblock %}
-
+{% block header %}
+  <!-- Blank header with no service name -->
+  {{ govukHeader({
+    classes: "govuk-header--full-width-border"
+  }) }}
+  
+{% endblock %}
 {% block content %}
 {% endblock %}
