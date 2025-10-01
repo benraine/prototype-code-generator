@@ -65,7 +65,7 @@ Make sure `govuk-frontend` is installed (it is listed in `package.json`).
 npm run dev
 ```
 
-Visit [http://localhost:3000/(http://localhost:3000/govuk-offline-nunjucks-generator).
+Visit http://localhost:3000 
 
 ---
 
