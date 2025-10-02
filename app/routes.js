@@ -15,9 +15,16 @@ const nunjucks = require('nunjucks');
 // Body parser for raw Nunjucks source used by the preview route
 const textParser = express.text({ type: '*/*', limit: '1mb' });
 
-// Find an address plugin
-const findAddressPlugin = require('find-an-address-plugin');
-findAddressPlugin(router);
+// Find an address plugin (optional in production)
+try {
+  const findAddressPlugin = require('find-an-address-plugin');
+  if (typeof findAddressPlugin === 'function') {
+    findAddressPlugin(router);
+  }
+} catch (e) {
+  console.warn('find-an-address-plugin not available, continuing without it');
+}
+
 
 // Logging session data
 router.use((req, res, next) => {
